@@ -12,6 +12,9 @@
 #include "../kernel/gpu_unlock/main.c"
 
 #define MAX_DEVICES 8
+#define RTX_3090 0x2204
+#define RTX_3070 0x2484
+#define RTX_3060 0x2503 /* GA106: not supported */
 
 static struct pci_dev devices[MAX_DEVICES];
 static unsigned int device_count;
@@ -62,7 +65,7 @@ struct pci_dev *pci_get_device(unsigned int vendor, unsigned int device, struct 
 
 	pci_dev_put(from);
 	for (; i < device_count; i++)
-		if (devices[i].vendor == vendor && devices[i].device == device)
+		if (devices[i].vendor == vendor && (device == PCI_ANY_ID || devices[i].device == device))
 			return pci_dev_get(&devices[i]);
 	return NULL;
 }
@@ -218,13 +221,13 @@ static bool logged(const char *text)
 
 int main(void)
 {
-	/* Every unbound RTX 3090 at once; other models and bound cards left alone. */
+	/* Every unbound GA102/GA104 card at once; other chips and bound cards left alone. */
 	reset("all");
 	add("0000:01:00.0", RTX_3090, false);
-	add("0000:21:00.0", RTX_3090, false);
-	add("0000:31:00.0", 0x2208, false);
+	add("0000:21:00.0", RTX_3070, false);
+	add("0000:31:00.0", RTX_3060, false);
 	add("0000:41:00.0", RTX_3090, true);
-	add("0000:61:00.0", RTX_3090, false);
+	add("0000:61:00.0", 0x2208, false);
 	fake.expected_concurrent = 3;
 	run();
 	assert(fake.max_in_flight == 3 && fake.started == 3);
@@ -243,7 +246,7 @@ int main(void)
 	run();
 	assert(fake.max_in_flight == 2 && !fake.unlocks[0] && fake.unlocks[1] && fake.unlocks[2]);
 	assert(fake.loads == 1 && fake.load_dev == &devices[1] && fake.releases == 1);
-	assert(!logged("no RTX 3090"));
+	assert(!logged("no GA102/GA104 card"));
 	puts("list: only listed cards, concurrently PASS");
 
 	/* One card failing leaves the others unlocked. */
@@ -268,12 +271,14 @@ int main(void)
 	assert(logged("0000:01:00.0: gpu_unlock: firmware load failed (-2)"));
 	puts("firmware load failure: nothing attempted PASS");
 
-	/* Unmatched entries are reported; nothing to load for no cards. */
-	reset("0000:99:00.0");
+	/* Unmatched entries, including unsupported chips, are reported; nothing to load for no cards. */
+	reset("0000:99:00.0,0000:31:00.0");
 	add("0000:01:00.0", RTX_3090, false);
+	add("0000:31:00.0", RTX_3060, false);
 	run();
 	assert(!fake.loads && !fake.started && fake.releases == 1);
-	assert(logged("gpu_unlock: no RTX 3090 at \"0000:99:00.0\""));
+	assert(logged("gpu_unlock: no GA102/GA104 card at \"0000:99:00.0\""));
+	assert(logged("gpu_unlock: no GA102/GA104 card at \"0000:31:00.0\""));
 	puts("unmatched target: reported, nothing loaded PASS");
 
 	/* No opt-in on the command line: the module does nothing. */

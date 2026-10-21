@@ -139,6 +139,12 @@ static int diag_pci_dword(struct unlock_transaction_work *work, bool cap, int of
 	return ret;
 }
 
+/* The config-space vendor/device dword this card answered at enumeration. */
+static u32 pci_identity(const struct pci_dev *pdev)
+{
+	return (u32)pdev->device << 16 | pdev->vendor;
+}
+
 static void *diag_dma_alloc(struct unlock_transaction_work *work, const char *name,
 			   size_t size, dma_addr_t *dma, unsigned int flags)
 {
@@ -399,7 +405,7 @@ static int falcon_hs(struct unlock_transaction_work *work, const struct falcon_e
 			u32 plm, engine, identity;
 
 			if (diag_pci_dword(work, false, PCI_VENDOR_ID, &identity) ||
-			    identity != 0x220410de ||
+			    identity != pci_identity(work->pdev) ||
 			    read_bar(work, eng->base + 0x100, &engine) || engine == ~0u ||
 			    (engine & 0xffff0000u) == 0xbadf0000u ||
 			    read_bar(work, GU_FEAT_PLM_OFFSET, &plm))
@@ -1226,7 +1232,7 @@ static int wait_post_flr_gfw(struct unlock_transaction_work *work)
 	for (;;) {
 		sample = (struct gpu_unlock_gfw_sample){ };
 		ret = diag_pci_dword(work, false, PCI_VENDOR_ID, &identity);
-		sample.config_ok = !ret && identity == 0x220410de;
+		sample.config_ok = !ret && identity == pci_identity(work->pdev);
 		if (!sample.config_ok) {
 			ret = -ENODEV;
 			break;
@@ -1301,7 +1307,7 @@ static int unlock_transaction_reset(struct unlock_transaction_work *work)
 	/* The saved image predates BME. No transient restore with BME set. */
 	pci_restore_state(work->pdev);
 	if (diag_pci_dword(work, false, PCI_VENDOR_ID, &identity) ||
-	    identity != 0x220410de ||
+	    identity != pci_identity(work->pdev) ||
 	    diag_pci_word(work, false, PCI_COMMAND, &command) ||
 	    command == 0xffff || (command & PCI_COMMAND_MASTER) ||
 	    !(command & PCI_COMMAND_MEMORY))

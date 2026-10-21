@@ -45,7 +45,7 @@ static u8 fw_image[4097];
 static struct firmware fw={sizeof(fw_image),fw_image};
 static void setup(struct unlock_transaction_work *w) {
     memset(&fake,0,sizeof(fake)); memset(regs,0,sizeof(regs)); memset(w,0,sizeof(*w));
-    mask=0xffffffffffffull; dev=(struct pci_dev){.dev={.dma_mask=&mask,.coherent_dma_mask=0xfffffffffull},.refs=1};
+    mask=0xffffffffffffull; dev=(struct pci_dev){.dev={.dma_mask=&mask,.coherent_dma_mask=0xfffffffffull},.vendor=0x10de,.device=0x2204,.refs=1};
     w->pdev=&dev; w->bar=regs; w->bar_len=sizeof(regs); w->mapped=true;
     fake.cmd=2;fake.saved=2;regs[(SEC2_BASE+0xf4)/4]=1u<<31;regs[(0x110000+0xf4)/4]=1u<<31;
     regs[(SEC2_BASE+0x118)/4]=2;regs[(0x110000+0x118)/4]=2;

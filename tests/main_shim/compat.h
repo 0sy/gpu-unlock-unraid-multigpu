@@ -21,6 +21,8 @@
 #define module_exit(fn) void (*test_module_exit)(void) = fn;
 
 #define PCI_VENDOR_ID_NVIDIA 0x10de
+#define PCI_ANY_ID (~0u)
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 struct pci_dev {
 	const char *name;
 	unsigned short vendor, device;

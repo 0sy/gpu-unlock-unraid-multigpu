@@ -10,7 +10,10 @@ It is neither a UEFI application nor a patched NVIDIA driver.
 The observed result is GPU1, an RTX 3090 at `0000:21:00.0`, on the main
 CachyOS `7.2.8-1-cachyos` kernel with NVIDIA `615.71.09`. GPU0 at
 `0000:01:00.0` was an unmodified control. Other RTX 3090 boards and
-environments have not been verified. Other GA102 PCI device IDs are rejected.
+environments have not been verified. GeForce and CMP GA102/GA104 PCI device
+IDs are accepted; professional RTX A-series and data-centre parts are not.
+No GA104 card and no GA102 card other than the RTX 3090 has been tested; the
+firmware and V67 image are the GA102 ones. Other chips are rejected.
 
 ## Local build
 
@@ -58,14 +61,14 @@ There is no `softdep nvidia pre:` rule: kmod honours only the first
 The module does nothing unless the kernel command line opts in:
 
 ```
-gpu_unlock.targets=all                          # every unbound 10de:2204 card
+gpu_unlock.targets=all                          # every unbound GA102/GA104 card
 gpu_unlock.targets=0000:21:00.0                 # only these cards
 gpu_unlock.targets=0000:21:00.0,0000:22:00.0    # comma-separated
 ```
 
 Addresses are full PCI names as `lspci -D` prints them (hex digits in either
 case), independent of GPU numbering and display role. An entry that is not
-an RTX 3090, including `all` mixed with addresses, is logged and ignored.
+a GA102/GA104 card, including `all` mixed with addresses, is logged and ignored.
 The cards are unlocked concurrently, about a second in all however many
 there are, and each on its own: a card that is already bound, powered down
 or bus mastering is skipped. Then `nvidia` loads and binds every card as
