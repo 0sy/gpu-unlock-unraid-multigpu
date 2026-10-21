@@ -105,3 +105,13 @@ before trying again.
 The kernel module and local packaging are GPL-2.0-only. The generated payload
 derives from the pinned CMP reference; NVIDIA firmware remains under its own
 terms. See `firmware/NOTICE.md` and `licenses/` for attribution and notices.
+
+
+# Support me
+
+Help me buy more GPUs <3
+
+https://buymeacoffee.com/zagitta
+ETH: 0xf4eee937937f92038D70B16AbD7736D8a53a1c5c
+BTC: bc1qwpkwp70fn76z3s4kg2l9y3j4kst95twcznuugf
+SOL: 8Rih6HY7V4LcdjYHz4iSffT4fTniqw5CACaBigSVxNYu
