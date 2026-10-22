@@ -798,7 +798,10 @@ static int unlock_transaction_claim(struct unlock_transaction_work *work)
 
 	dev_info(&work->pdev->dev, "claim: power=%d pm_cap=%#x flags=%#x\n",
 		work->pdev->current_state, work->pdev->pm_cap, work->pdev->dev_flags);
-	if (work->pdev->current_state != PCI_D0 ||
+	/* Older kernels (seen on 6.8 and 6.14) leave a device no driver has
+	 * enabled at PCI_UNKNOWN. Accept that only when PMCSR confirms D0. */
+	if ((work->pdev->current_state != PCI_D0 &&
+	     (work->pdev->current_state != PCI_UNKNOWN || !work->pdev->pm_cap)) ||
 	    (work->pdev->pm_cap &&
 	     (diag_pci_word(work, false, work->pdev->pm_cap + PCI_PM_CTRL, &pmcsr) ||
 	      (pmcsr & PCI_PM_CTRL_STATE_MASK) != PCI_D0)))
@@ -812,8 +815,18 @@ static int unlock_transaction_claim(struct unlock_transaction_work *work)
 		return GU_RESULT(-ENODEV);
 	work->original_cmd = command;
 	work->cmd_valid = true;
-	if (command & PCI_COMMAND_MASTER)
-		return GU_RESULT(-EBUSY);
+	/* Some firmware (Supermicro X11 AMI) hands every card over with BME set,
+	 * whatever its option ROM and bus master settings. No driver is bound,
+	 * and the WPR2 check still refuses a card that one has initialised. */
+	if (command & PCI_COMMAND_MASTER) {
+		command &= ~PCI_COMMAND_MASTER;
+		if (pci_write_config_word(work->pdev, PCI_COMMAND, command) ||
+		    diag_pci_word(work, false, PCI_COMMAND, &command) ||
+		    command == 0xffff || (command & PCI_COMMAND_MASTER))
+			return GU_RESULT(-EBUSY);
+		dev_info(&work->pdev->dev, "claim: cleared firmware BME\n");
+		work->original_cmd = command;
+	}
 	dev_info(&work->pdev->dev, "claim: command=%#x capability=%#x BAR_mask=%#x\n",
 		command, cap, pci_select_bars(work->pdev, IORESOURCE_MEM));
 	/* Only BAR0 is mapped. On the display card the firmware framebuffer keeps
