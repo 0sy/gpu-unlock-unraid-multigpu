@@ -70,9 +70,11 @@ Addresses are full PCI names as `lspci -D` prints them (hex digits in either
 case), independent of GPU numbering and display role. An entry that is not
 a GA102/GA104 card, including `all` mixed with addresses, is logged and ignored.
 The cards are unlocked concurrently, about a second in all however many
-there are, and each on its own: a card that is already bound, powered down
-or bus mastering is skipped. Then `nvidia` loads and binds every card as
-usual.
+there are, and each on its own: a card that is already bound or powered
+down is skipped. Bus mastering that the board firmware left on (Supermicro
+X11 does this whatever its option ROM and bus master settings) is cleared
+first; a card some driver already initialised is still refused. Then
+`nvidia` loads and binds every card as usual.
 
 The display card works too. Its firmware framebuffer (the boot console and
 Plymouth) keeps running while the unlock's firmware steps run, and is

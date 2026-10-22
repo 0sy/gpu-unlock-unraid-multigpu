@@ -29,6 +29,7 @@ void test_device_log(const char *, ...) __attribute__((format(printf, 1, 2)));
 #define dev_err(dev, ...) test_device_log(__VA_ARGS__)
 #define dev_info(dev, ...) test_device_log(__VA_ARGS__)
 #define PCI_D0 0
+#define PCI_UNKNOWN 5
 #define PCI_DEV_FLAGS_NO_FLR_RESET (1u << 10)
 #define PCI_VENDOR_ID 0
 #define PCI_COMMAND 4

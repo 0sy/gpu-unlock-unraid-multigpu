@@ -15,7 +15,7 @@ static struct {
     u16 cmd,saved;
     unsigned long now;
     int allocs,live,frees,fail_alloc,fail_mask,flrs,fail_reset,starts,boot_mode,bar_bad,barriers,writes;
-    int gsp_starts,fwsec_mode,master_fail,selector_writes,ss1_writes,fw_live;
+    int gsp_starts,fwsec_mode,master_fail,master_stuck,selector_writes,ss1_writes,fw_live;
     int pending,lost_identity,corrupt_selector,alien_wpr;
     int fw_requests,fail_fw,fail_claim,fail_map,fail_save,fail_context,pins,selector_bad;
     int restore_mask_fail,late_devres;
@@ -165,7 +165,7 @@ int pci_read_config_word(struct pci_dev *p,int r,u16 *v) {*v=r==PCI_COMMAND?fake
 int pci_read_config_dword(struct pci_dev *p,int r,u32 *v) {
     *v=r==PCI_VENDOR_ID?(fake.flrs && fake.lost_identity?~0u:0x220410de):(u32)fake.bar_bad;return 0;
 }
-int pci_write_config_word(struct pci_dev *p,int r,u16 v) {assert(r==PCI_COMMAND);fake.cmd=v;return 0;}
+int pci_write_config_word(struct pci_dev *p,int r,u16 v) {assert(r==PCI_COMMAND);fake.cmd=v|(fake.master_stuck?4:0);return 0;}
 int pcie_capability_read_word(struct pci_dev *p,int r,u16 *v) {*v=r==PCI_EXP_DEVSTA?fake.pending:0;return 0;}
 int pcie_capability_read_dword(struct pci_dev *p,int r,u32 *v) {*v=PCI_EXP_DEVCAP_FLR;return 0;}
 int pci_is_pcie(struct pci_dev *p) {return 1;}
@@ -544,7 +544,8 @@ int main(int argc, char **argv) {
             "wpr-disabled-zero","wpr-inverted","wpr-inaccessible",
             "post-gfw-late","post-gfw-timeout","post-gfw-inaccessible","post-gsp-resumed",
             "wpr-frts-retained","firmware-group-oom-first","firmware-group-oom-later","devres-preexisting","devres-at-handoff",
-            "warm-wpr2","ss1-readback","ss1-lost"};
+            "warm-wpr2","ss1-readback","ss1-lost","power-unknown","power-unknown-no-pm",
+            "firmware-bme","firmware-bme-stuck"};
         int total_allocations=0;
         for(unsigned scenario=0;scenario<ARRAY_SIZE(cases);scenario++) {
             setup(&w);
@@ -606,12 +607,17 @@ int main(int argc, char **argv) {
             if(scenario==55)regs[0x1fa828/4]=fake.fwsec_wpr_hi; /* a driver already ran FWSEC */
             if(scenario==56)fake.selector_bad=2;
             if(scenario==57)fake.corrupt_selector=2;
+            if(scenario==58 || scenario==59)dev.current_state=PCI_UNKNOWN;
+            if(scenario==58)dev.pm_cap=0x60;
+            if(scenario==60 || scenario==61)fake.cmd=6; /* firmware left BME set */
+            if(scenario==61)fake.master_stuck=1;
             /* As main.c: the GSP file is loaded once, ahead of every card. */
             struct gpu_unlock_610_shared shared={0};last_work=NULL;
             int ret=gpu_unlock_610_load_shared(&dev,&shared);
             if(!ret)ret=gpu_unlock_610_unlock(&dev,&shared);
             gpu_unlock_610_release_shared(&shared);
-            bool expected=scenario<2 || (scenario>=33 && scenario<=35) || scenario==39 || scenario==40 || scenario==43 || scenario==46;
+            bool expected=scenario<2 || (scenario>=33 && scenario<=35) || scenario==39 || scenario==40 || scenario==43 || scenario==46 ||
+                scenario==58 || scenario==60;
             bool retained=fake.pins;
             if((!ret)!=expected)fprintf(stderr,"%s\n%s: error=%d\n",fake.log,cases[scenario],ret);
             assert((!ret)==expected);
@@ -648,7 +654,8 @@ int main(int argc, char **argv) {
                 assert(!unlock_transaction_unwind(last_work));
                 pci_dev_put(last_work->pdev);free(last_work);
             }
-            assert(!fake.live && !fake.fw_live && dev.refs==1 && !(fake.cmd&4));
+            /* A card whose BME will not clear is left as found. */
+            assert(!fake.live && !fake.fw_live && dev.refs==1 && (scenario==61 || !(fake.cmd&4)));
             assert(!fake.group_live && fake.cache_records==fake.cache_released);
             assert(dev.dev.devres_head.count==(scenario==53 || scenario==54?1u:0u));
             if(scenario>=51 && scenario<=53)assert(!fake.writes && !fake.allocs && !fake.flrs);
@@ -659,6 +666,9 @@ int main(int argc, char **argv) {
             if(scenario==33)assert(fake.cmd==0);
             if(scenario==56)assert(ret==-EIO && retained && fake.ss1_writes==1 && !fake.flrs);
             if(scenario==57)assert(ret==-EIO && !retained && fake.flrs==1);
+            if(scenario==59)assert(ret==-EOPNOTSUPP && !fake.allocs && !fake.flrs);
+            if(scenario==60)assert(strstr(fake.log,"claim: cleared firmware BME"));
+            if(scenario==61)assert(ret==-EBUSY && !fake.allocs && !fake.flrs);
             if(scenario==55) {
                 assert(ret==-EBUSY && !retained && !fake.gsp_starts && !fake.starts && !fake.flrs);
                 assert(strstr(fake.log,"card already initialised since power on"));
