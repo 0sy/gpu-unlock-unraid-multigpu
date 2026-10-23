@@ -13,6 +13,3 @@
 /debian -export-ignore
 /docs -export-ignore
 /docs/* export-ignore
-/docs/STAGE1.md -export-ignore
-/docs/STAGE1-TAIL-REPLAY.json -export-ignore
-/docs/CMP-PORT-PLAN.md -export-ignore
