@@ -9,10 +9,11 @@
 
 static char *targets;
 module_param(targets, charp, 0444);
-MODULE_PARM_DESC(targets, "\"all\" or comma-separated PCI addresses of GA102/GA104 cards to unlock");
+MODULE_PARM_DESC(targets, "\"all\" or comma-separated PCI addresses of GA102/GA103/GA104/GA106 cards to unlock");
 
-/* GA102 and GA104 GPU functions in pci.ids, excluding audio functions and the
- * professional (GL) parts, which already run BF16 at full rate.
+/* GA102, GA103, GA104 and GA106 GPU functions in pci.ids, excluding audio
+ * functions and the professional (GL) parts, which already run BF16 at full
+ * rate. GA103 and GA106 also exclude mobile parts.
  */
 static const unsigned short supported_ids[] = {
 	/* GA102 */
@@ -23,8 +24,11 @@ static const unsigned short supported_ids[] = {
 	0x248a, 0x248c, 0x248d, 0x248e, 0x249c, 0x249d, 0x249f, 0x24a0,
 	0x24a4, 0x24ac, 0x24ad, 0x24af, 0x24bf, 0x24c0, 0x24c7, 0x24c8,
 	0x24c9, 0x24dc, 0x24dd, 0x24df, 0x24e0,
-	/* GA106 (experimental: same family; validated on RTX 3060 12GB 0x2504) */
-	0x2504,
+	/* GA103 (untested) */
+	0x2414,
+	/* GA106 (validated only on RTX 3060 12GB 0x2504) */
+	0x2501, 0x2503, 0x2504, 0x2505, 0x2507, 0x2508, 0x2509, 0x252f,
+	0x2544,
 };
 
 static ASYNC_DOMAIN_EXCLUSIVE(unlock_domain);
@@ -87,7 +91,7 @@ static void report_unmatched(void)
 		if (pdev)
 			pci_dev_put(pdev);
 		else
-			pr_err("gpu_unlock: no GA102/GA104 card at \"%.*s\"\n",
+			pr_err("gpu_unlock: no supported card at \"%.*s\"\n",
 			       (int)(end - entry), entry);
 	}
 }
@@ -130,5 +134,5 @@ static void __exit gpu_unlock_exit(void)
 module_init(gpu_unlock_init);
 module_exit(gpu_unlock_exit);
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("GA102/GA104 pre-driver BF16 unlock");
+MODULE_DESCRIPTION("Ampere pre-driver BF16 unlock");
 MODULE_VERSION("1.0.0");
