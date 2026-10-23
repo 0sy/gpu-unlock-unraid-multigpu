@@ -126,6 +126,18 @@ over.
 Loading the module by hand after boot does nothing to a card that `nvidia`
 has bound.
 
+Suspend to RAM powers the cards off, which resets the speed selectors. After
+resume the module unlocks every card it unlocked at boot again, before
+`nvidia` resumes it: its suspend notifier runs just ahead of the one `nvidia`
+resumes its cards from (`NVreg_UseKernelSuspendNotifiers=1`, the default in
+current drivers; `nvidia-resume.service` runs later still). This adds about a
+second to resume. A card that kept power, as in suspend to idle, is still
+unlocked and is only read. A card that `nvidia` has already resumed, or that is
+bound to another driver, is left as it is, and the log says why. Add
+`gpu_unlock.resume=0` to the kernel command line, or write `0` to
+`/sys/module/gpu_unlock/parameters/resume`, to turn this off. Hibernation is
+not covered.
+
 Check the result with:
 
 ```sh

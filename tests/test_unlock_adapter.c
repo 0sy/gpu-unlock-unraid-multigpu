@@ -26,6 +26,8 @@ static struct {
     int post_gfw,post_gfw_reads,gsp_post_reset_writes;
     int fwsec_wpr;u32 fwsec_wpr_lo,fwsec_wpr_hi; /* WPR2 that FWSEC-FRTS enables */
     int apertures,regions;
+    int bound,gfw_late,gfw_late_reads; /* resume: nvidia bound; GFW done after N reads */
+    int busmaster; /* the PCI core's is_busmaster */
     char log[32768];
 } fake;
 void *kzalloc(size_t n,int flags) {
@@ -71,6 +73,10 @@ void usleep_range(unsigned long a,unsigned long b) {fake.now+=a;}
 ktime_t ktime_get(void) {return fake.now;}
 u32 readl(const void *p) {
     size_t n=((const u8 *)p-(const u8 *)regs)/4;assert(n<ARRAY_SIZE(regs));
+    /* Power-on GFW still running: the FB size appears only once it is done. */
+    if(!fake.flrs && n==GU_GFW_BOOT_OFFSET/4 && fake.gfw_late && ++fake.gfw_late_reads==fake.gfw_late) {
+        regs[n]=0xff;regs[0x1183a4/4]=0x6000;
+    }
     if(fake.flrs && !n && fake.bar_ready_after) {
         fake.bar_ready_reads++;
         if(fake.bar_ready_after<0 || fake.bar_ready_reads<fake.bar_ready_after)
@@ -172,13 +178,14 @@ int pci_is_pcie(struct pci_dev *p) {return 1;}
 int pci_select_bars(struct pci_dev *p,int r) {return 7;}
 int pci_request_region(struct pci_dev *p,int bar,const char *n) {
     assert(!bar); /* only BAR0: the display card's framebuffer keeps BAR1 */
-    if(fake.fail_claim)return -EBUSY;
+    if(fake.fail_claim || fake.bound)return -EBUSY; /* nvidia holds it after resume */
     fake.regions++;return 0;
 }
 void pci_release_region(struct pci_dev *p,int bar) {assert(!bar && fake.regions==1);fake.regions--;}
 int aperture_remove_conflicting_pci_devices(struct pci_dev *p,const char *n) {
-    /* The framebuffer stays through FWSEC and Booter; it goes right before FLR. */
-    assert(!fake.flrs && !(fake.cmd&4));
+    /* The framebuffer stays through FWSEC and Booter; it goes right before FLR.
+     * After resume nvidia-drm already replaced it. */
+    assert(!fake.flrs && !(fake.cmd&4) && !fake.bound);
     if(full_active)assert(fake.starts==1);
     fake.apertures++;return 0;
 }
@@ -191,11 +198,11 @@ void *pci_map_rom(struct pci_dev *p,size_t *n) {return NULL;}
 void pci_unmap_rom(struct pci_dev *p,void *v) {}
 int pci_save_state(struct pci_dev *p) {fake.saved=fake.cmd;return fake.fail_save?-EIO:0;}
 void pci_restore_state(struct pci_dev *p) {assert(!(fake.saved&4));fake.cmd=fake.saved;}
-void pci_set_master(struct pci_dev *p) {if(!fake.master_fail)fake.cmd|=4;}
-void pci_clear_master(struct pci_dev *p) {fake.cmd&=~4;}
+void pci_set_master(struct pci_dev *p) {if(!fake.master_fail){fake.cmd|=4;fake.busmaster=1;}}
+void pci_clear_master(struct pci_dev *p) {fake.cmd&=~4;fake.busmaster=0;}
 int pcie_flr(struct pci_dev *p) {
     if(full_active)check_restored_signature();
-    if(full_active)assert(fake.apertures==1);
+    if(full_active)assert(fake.apertures==!fake.bound);
     fake.flrs++;
     if(fake.late_devres)p->dev.devres_head.count++;
     /* FLR releases engine reset; post-FLR assertion must work independently. */
@@ -545,7 +552,9 @@ int main(int argc, char **argv) {
             "post-gfw-late","post-gfw-timeout","post-gfw-inaccessible","post-gsp-resumed",
             "wpr-frts-retained","firmware-group-oom-first","firmware-group-oom-later","devres-preexisting","devres-at-handoff",
             "warm-wpr2","ss1-readback","ss1-lost","power-unknown","power-unknown-no-pm",
-            "firmware-bme","firmware-bme-stuck"};
+            "firmware-bme","firmware-bme-stuck",
+            "resume-success","resume-gfw-late","resume-kept-power","resume-gsp-running",
+            "resume-gfw-timeout","resume-oom"};
         int total_allocations=0;
         for(unsigned scenario=0;scenario<ARRAY_SIZE(cases);scenario++) {
             setup(&w);
@@ -611,24 +620,41 @@ int main(int argc, char **argv) {
             if(scenario==58)dev.pm_cap=0x60;
             if(scenario==60 || scenario==61)fake.cmd=6; /* firmware left BME set */
             if(scenario==61)fake.master_stuck=1;
+            /* After resume: nvidia bound with its BME and device resources,
+             * the card powered off and on again. */
+            bool bound=!strncmp(cases[scenario],"resume-",7);
+            if(bound){fake.bound=1;fake.cmd=6;fake.busmaster=1;dev.dev.devres_head.count=1;}
+            if(!strcmp(cases[scenario],"resume-gfw-late")) {
+                fake.gfw_late=5;regs[GU_GFW_BOOT_OFFSET/4]=0;regs[0x1183a4/4]=0;
+            }
+            if(!strcmp(cases[scenario],"resume-kept-power")) {
+                regs[GU_FEAT_SS0_OFFSET/4]=0x88888888;regs[GU_FEAT_SS1_OFFSET/4]=0x8;
+            }
+            if(!strcmp(cases[scenario],"resume-gsp-running")) { /* GSP-RM up: not halted, WPR2 enabled */
+                regs[0x1fa828/4]=fake.fwsec_wpr_hi;regs[GU_GFW_CPUCTL_OFFSET/4]=0;
+            }
+            if(!strcmp(cases[scenario],"resume-gfw-timeout"))regs[GU_GFW_BOOT_OFFSET/4]=0;
+            if(!strcmp(cases[scenario],"resume-oom"))fake.fail_alloc=1;
             /* As main.c: the GSP file is loaded once, ahead of every card. */
             struct gpu_unlock_610_shared shared={0};last_work=NULL;
             int ret=gpu_unlock_610_load_shared(&dev,&shared);
-            if(!ret)ret=gpu_unlock_610_unlock(&dev,&shared);
+            if(!ret)ret=gpu_unlock_610_unlock(&dev,&shared,bound);
             gpu_unlock_610_release_shared(&shared);
             bool expected=scenario<2 || (scenario>=33 && scenario<=35) || scenario==39 || scenario==40 || scenario==43 || scenario==46 ||
-                scenario==58 || scenario==60;
+                scenario==58 || scenario==60 ||
+                !strcmp(cases[scenario],"resume-success") || !strcmp(cases[scenario],"resume-gfw-late");
             bool retained=fake.pins;
             if((!ret)!=expected)fprintf(stderr,"%s\n%s: error=%d\n",fake.log,cases[scenario],ret);
             assert((!ret)==expected);
             if(expected) {
                 assert(fake.gsp_starts==1 && fake.starts==1 && fake.flrs==1 && !fake.pins);
-                assert(fake.apertures==1 && !fake.regions);
+                assert(fake.apertures==!bound && !fake.regions);
                 assert(fake.selector_writes==(scenario==1?0:1) && fake.ss1_writes==(scenario==1?0:1));
                 assert(regs[GU_FEAT_SS0_OFFSET/4]==0x88888888 && regs[GU_FEAT_SS1_OFFSET/4]==0x8);
                 assert(mask==0xffffffffffffull && dev.dev.coherent_dma_mask==0xfffffffffull);
-                /* Mirror Linux really_probe: driver entry rejects nonempty devres. */
-                assert(list_empty(&dev.dev.devres_head));
+                /* Mirror Linux really_probe: driver entry rejects nonempty devres.
+                 * A bound driver keeps its own. */
+                assert(dev.dev.devres_head.count==(bound?1u:0u));
                 assert(fake.cache_records==5 && fake.cache_released==5);
                 /* Pinned RM checks GSP halt + readable completed GFW BEFORE
                  * its own reset/bootstrap. Preserve that entry contract. */
@@ -654,10 +680,22 @@ int main(int argc, char **argv) {
                 assert(!unlock_transaction_unwind(last_work));
                 pci_dev_put(last_work->pdev);free(last_work);
             }
-            /* A card whose BME will not clear is left as found. */
-            assert(!fake.live && !fake.fw_live && dev.refs==1 && (scenario==61 || !(fake.cmd&4)));
+            /* A card whose BME will not clear is left as found; nvidia gets its own back. */
+            assert(!fake.live && !fake.fw_live && dev.refs==1 && !!(fake.cmd&4)==(scenario==61 || bound));
+            if(bound)assert(fake.busmaster);
             assert(!fake.group_live && fake.cache_records==fake.cache_released);
-            assert(dev.dev.devres_head.count==(scenario==53 || scenario==54?1u:0u));
+            assert(dev.dev.devres_head.count==(scenario==53 || scenario==54 || bound?1u:0u));
+            assert(dev.dev.dma_mask==&mask && mask==0xffffffffffffull && dev.dev.coherent_dma_mask==0xfffffffffull);
+            if(!strcmp(cases[scenario],"resume-gfw-late"))assert(fake.gfw_late_reads>=fake.gfw_late);
+            /* A card that kept power or runs GSP-RM is only read. */
+            if(!strcmp(cases[scenario],"resume-kept-power") || !strcmp(cases[scenario],"resume-gsp-running")) {
+                assert(ret==(cases[scenario][7]=='k'?-EALREADY:-EBUSY));
+                assert(!fake.writes && !fake.allocs && fake.fw_requests==1 && fake.cmd==6 && !fake.now);
+            }
+            if(!strcmp(cases[scenario],"resume-gfw-timeout"))
+                assert(ret==-ETIMEDOUT && !fake.writes && !fake.allocs && fake.cmd==6);
+            if(!strcmp(cases[scenario],"resume-oom"))
+                assert(ret==-ENOMEM && !fake.gsp_starts && !fake.flrs && fake.cmd==6);
             if(scenario>=51 && scenario<=53)assert(!fake.writes && !fake.allocs && !fake.flrs);
             if(scenario==53)assert(fake.fw_requests==1 && ret==-EBUSY); /* only the shared load */
             if(scenario==3 || scenario==51)assert(!last_work && fake.fw_requests==(scenario==3));
