@@ -27,7 +27,7 @@ DEBS    := $(foreach p,dkms firmware,$(DEBDIR)/gpu-unlock-$(p)_$(VERSION)_all.de
 
 .PHONY: all test dist inputs firmware assets install-dkms install-firmware \
         install-mkinitcpio install-initramfs-tools install-dracut \
-        install-licenses arch deb rpm install-arch install-deb install-rpm
+        install-licenses arch deb rpm install install-arch install-deb install-rpm
 
 all:
 
@@ -91,6 +91,27 @@ install-licenses:
 
 # Native packages, built from the committed HEAD like the PKGBUILD. The
 # install-* variants also pull build dependencies and install the result.
+install:
+	@set -eu; \
+	if [ -r /etc/os-release ]; then \
+		. /etc/os-release; \
+	elif [ -r /usr/lib/os-release ]; then \
+		. /usr/lib/os-release; \
+	fi; \
+	for distro in $${ID:-} $${ID_LIKE:-}; do \
+		case "$$distro" in \
+			arch) target=arch ;; \
+			debian|ubuntu) target=deb ;; \
+			fedora|rhel|centos) target=rpm ;; \
+			*) continue ;; \
+		esac; \
+		echo "Detected $$distro family; running make install-$$target"; \
+		$(MAKE) install-$$target; \
+		exit $$?; \
+	done; \
+	echo "Unsupported distribution: $${ID:-unknown}. Use make install-arch, install-deb, or install-rpm explicitly (RPM requires DNF)." >&2; \
+	exit 1
+
 arch:
 	cd packaging/arch && makepkg -f
 

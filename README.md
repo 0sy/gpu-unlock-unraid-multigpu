@@ -1,19 +1,48 @@
-# GPU unlock 1.0.0 packaging candidate
+# GPU unlock 1.0.0
 
-This Linux kernel module combines the CMP unlocker's V67/PLM technique with the
-pre-driver timing of the UEFI approach. It runs the unlock, writes
-the speed selectors (SS0 `0x88888888`, which selects the full BF16 rate, and
-the 4-bit SS1 `0x8`, whose effect is untested) and performs FLR before the unmodified
-NVIDIA driver binds the card.
-It is neither a UEFI application nor a patched NVIDIA driver.
+This Linux kernel module combines the CMP unlocker's V67/PLM technique with the pre-driver timing of the UEFI approach. It runs the unlock, writes the speed selectors (SS0 `0x88888888`, which selects the full BF16 rate, and the 4-bit SS1 `0x8` IMLA4) and performs FLR before the unmodified NVIDIA driver binds the card. It is neither a UEFI application nor a patched NVIDIA driver. 
 
-The observed result is GPU1, an RTX 3090 at `0000:21:00.0`, on the main
-CachyOS `7.2.8-1-cachyos` kernel with NVIDIA `615.71.09`. GPU0 at
-`0000:01:00.0` was an unmodified control. Other RTX 3090 boards and
-environments have not been verified. GeForce and CMP GA102/GA104 PCI device
-IDs are accepted; professional RTX A-series and data-centre parts are not.
-No GA104 card and no GA102 card other than the RTX 3090 has been tested; the
-firmware and V67 image are the GA102 ones. Other chips are rejected.
+The benefit of this early kmod driver is that it does not require manual patching each time nvidia releases a new driver version.
+
+The effect of this unlock is that it doubles the instruction issuing speed of FP/BF16 FMA into FP32 operations on GA102 and GA104 cards.
+
+[3090 Ti dense 8192³ GEMM at 450 W, five-sample medians with FP32 accumulation](https://github.com/Zagitta/gpu-unlock/issues/1#issue-5905622687):
+
+
+| Input | Before       | After         |
+| ----- | ------------ | ------------- |
+| FP16  | 87.46 TFLOPS | 118.39 TFLOPS |
+| BF16  | 87.50 TFLOPS | 157.41 TFLOPS |
+| TF32  | 42.58 TFLOPS | 82.61 TFLOPS  |
+
+
+
+
+## How to install
+
+First run:
+
+```sh
+git clone https://github.com/Zagitta/gpu-unlock
+cd gpu-unlock
+make install
+```
+
+Then append `gpu_unlock.targets=all` to your kernel command line, keeping
+existing options:
+
+- **GRUB (Debian/Ubuntu/Mint):** add it inside `GRUB_CMDLINE_LINUX_DEFAULT`
+in `/etc/default/grub`, then run `sudo update-grub`.
+- **GRUB (Arch/CachyOS):** same edit, then run
+`sudo grub-mkconfig -o /boot/grub/grub.cfg`.
+- **Fedora/RHEL:** run
+`sudo grubby --update-kernel=ALL --args="gpu_unlock.targets=all"`.
+- **systemd-boot:** append it to the `options` line in your boot entry
+(`bootctl status` shows its location).
+- **UKI / generated entries:** add it to `/etc/kernel/cmdline` and regenerate
+your boot images/entries (e.g. `sudo mkinitcpio -P` for mkinitcpio UKIs).
+
+
 
 ## Local build
 
@@ -26,10 +55,15 @@ Build, install build dependencies, and install the packages in one step
 (asks for your sudo password):
 
 ```sh
+make install        # detect the distribution and select an installer
 make install-arch   # makepkg -sif
 make install-deb    # apt-get build-dep, dpkg-buildpackage, apt-get install
 make install-rpm    # dnf builddep, rpmbuild, dnf install
 ```
+
+`make install` uses `/etc/os-release` (`ID`, then `ID_LIKE`) to detect Arch,
+Debian/Ubuntu, or Fedora/RHEL/CentOS families. The RPM installer requires DNF.
+For other distributions, select a compatible explicit target above.
 
 `make arch`, `make deb` and `make rpm` only build. Debian and RPM packages go
 to `build/deb` and `build/rpm`. The NVIDIA inputs are cached in
@@ -45,12 +79,12 @@ The packages put `gpu_unlock` and its firmware in the initramfs and load it
 there, before `nvidia` can bind a card:
 
 - **mkinitcpio:** `/etc/mkinitcpio.conf.d/zz-gpu-unlock.conf` inserts
-  `gpu_unlock` right before `nvidia` in `MODULES`, so a display card is blank
-  for as short a time as possible. Without `nvidia` in the image, it goes
-  last and still runs before an `nvidia` loaded from the root filesystem.
-  Images are rebuilt on install. mkinitcpio ignores drop-ins for an image
-  built with `-c <config>` or a preset `_config`; put `gpu_unlock` right
-  before `nvidia` in that config's `MODULES` yourself.
+`gpu_unlock` right before `nvidia` in `MODULES`, so a display card is blank
+for as short a time as possible. Without `nvidia` in the image, it goes
+last and still runs before an `nvidia` loaded from the root filesystem.
+Images are rebuilt on install. mkinitcpio ignores drop-ins for an image
+built with `-c <config>` or a preset `_config`; put `gpu_unlock` right
+before `nvidia` in that config's `MODULES` yourself.
 - **initramfs-tools:** `/usr/share/initramfs-tools/modules.d/gpu-unlock.conf`.
 - **dracut:** `/usr/lib/dracut/dracut.conf.d/gpu-unlock.conf`.
 
@@ -82,12 +116,8 @@ removed just before the card's reset, as `nvidia-drm` would do a moment
 later anyway. Its screen is blank from that reset until `nvidia-drm` takes
 over.
 
-The unlock needs a cold card: power the machine off rather than rebooting.
-Warm reboots are not supported; with the option set, the unlock is expected
-to fail and leave the card as it was. Loading the module by hand after boot
-does nothing to a card that `nvidia` has bound. A card that a driver already
-used this power cycle is refused before any firmware runs (`card already
-initialised since power on`).
+Loading the module by hand after boot does nothing to a card that `nvidia`
+has bound.
 
 Check the result with:
 
@@ -108,12 +138,14 @@ The kernel module and local packaging are GPL-2.0-only. The generated payload
 derives from the pinned CMP reference; NVIDIA firmware remains under its own
 terms. See `firmware/NOTICE.md` and `licenses/` for attribution and notices.
 
-
 # Support me
 
 Help me buy more GPUs <3
 
-https://buymeacoffee.com/zagitta
+[https://buymeacoffee.com/zagitta](https://buymeacoffee.com/zagitta)  
+
 ETH: 0xf4eee937937f92038D70B16AbD7736D8a53a1c5c
+
 BTC: bc1qwpkwp70fn76z3s4kg2l9y3j4kst95twcznuugf
+
 SOL: 8Rih6HY7V4LcdjYHz4iSffT4fTniqw5CACaBigSVxNYu
