@@ -88,6 +88,11 @@ before `nvidia` in that config's `MODULES` yourself.
 - **initramfs-tools:** `/usr/share/initramfs-tools/modules.d/gpu-unlock.conf`.
 - **dracut:** `/usr/lib/dracut/dracut.conf.d/gpu-unlock.conf`.
 
+With initramfs-tools and dracut, the module is built for every installed
+kernel that has headers, and those kernels' images are rebuilt on install
+and again on removal. Kernels installed later get the module and a new
+image from the kernel's own install hooks.
+
 There is no `softdep nvidia pre:` rule: kmod honours only the first
 `softdep nvidia` line it reads, so other packages' rules (`nvidia-utils`,
 `gddr6_hwmon`) would silently override it, or it would override theirs.

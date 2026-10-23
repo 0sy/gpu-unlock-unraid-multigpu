@@ -24,6 +24,8 @@ NVIDIA driver binds, opted in on the kernel command line.
 %package dkms
 Summary: RTX 3090 BF16 unlock kernel source
 Requires: dkms
+Requires(post): dkms
+Requires(preun): dkms
 Requires: gpu-unlock-firmware = %{version}-%{release}
 
 %description dkms
@@ -66,11 +68,66 @@ make DESTDIR=%{buildroot} ASSETS="$PWD/assets" \
 %{_prefix}/lib/firmware/gpu-unlock
 
 %post dkms
+# Before 1.0.1 the old package kept its DKMS entry on upgrade; drop any
+# other version while its source is still on disk.
+for d in /var/lib/dkms/gpu-unlock/[0-9]*; do
+    [ -d "$d" ] && [ "${d##*/}" != %{version} ] &&
+        dkms remove -m gpu-unlock -v "${d##*/}" --all || :
+done
 dkms add -m gpu-unlock -v %{version} --rpm_safe_upgrade || :
 
 %preun dkms
-if [ "$1" -eq 0 ] && [ -d /var/lib/dkms/gpu-unlock/%{version} ]; then
+# On an upgrade to the same version --rpm_safe_upgrade keeps the entry;
+# on any other upgrade the old version must go too.
+if [ -d /var/lib/dkms/gpu-unlock/%{version} ]; then
     dkms remove -m gpu-unlock -v %{version} --all --rpm_safe_upgrade || :
+fi
+
+%posttrans dkms
+# Build for every kernel that has headers, not just the running one: a
+# kernel updated but not yet booted would otherwise boot without the
+# module. Kernels installed later get it from the dkms kernel-install hook.
+kernels=
+for b in /lib/modules/*/build; do
+    [ -d "$b" ] || continue
+    k=${b%/build}; k=${k##*/}
+    dkms build -m gpu-unlock -v %{version} -k "$k" --force && kernels="$kernels -k $k"
+done
+[ -n "$kernels" ] && dkms install -m gpu-unlock -v %{version} $kernels --force || :
+# The initramfs has to carry gpu_unlock and its firmware so that it runs
+# before nvidia. Fedora's and EPEL's dkms regenerate every image after an
+# install (post_transaction in framework.conf); otherwise rebuild those of
+# the kernels that can load it.
+if command -v dracut >/dev/null &&
+    ! grep -qs '^post_transaction=.*dracut' /etc/dkms/framework.conf \
+        /etc/dkms/framework.conf.d/*.conf; then
+    for d in /lib/modules/*/; do
+        k=${d%/}; k=${k##*/}
+        modinfo -k "$k" gpu_unlock >/dev/null 2>&1 &&
+            dracut --force --kver "$k" || :
+    done
+fi
+
+%postun dkms
+if [ "$1" -eq 0 ]; then
+    # A kernel package's weak-modules run can still have linked another
+    # kernel's build into its weak-updates; such a link now dangles and
+    # makes dracut fail for that kernel.
+    for l in /lib/modules/*/weak-updates/gpu_unlock.ko*; do
+        [ -L "$l" ] || continue
+        rm -f "$l"
+        k=${l%/weak-updates/*}; depmod -a "${k##*/}" || :
+    done
+    # Rebuild every initramfs that still loads the removed module. dkms
+    # remove may already have regenerated them, but only while the dracut
+    # drop-in was still there.
+    if command -v lsinitrd >/dev/null; then
+        for d in /lib/modules/*/; do
+            k=${d%/}; k=${k##*/}
+            lsinitrd --kver "$k" 2>/dev/null | grep -q gpu_unlock &&
+                dracut --force --kver "$k" || :
+        done
+    fi
 fi
 
 %changelog
