@@ -2,11 +2,13 @@
 """Check the generated payload and the shared install layout."""
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "firmware"))
@@ -18,6 +20,68 @@ class PackageTests(unittest.TestCase):
         digest = hashlib.sha256(generate_v67.build_payload()).hexdigest()
         self.assertEqual(digest, generate_v67.PAYLOAD_SHA256)
         self.assertEqual(digest, self.manifest()["generated_payload"]["sha256"])
+
+    def test_compiled_payload_header_matches_generator(self):
+        self.assertEqual((ROOT / "kernel/gpu_unlock/payload_words.h").read_text(),
+                         generate_v67.payload_header())
+
+    def test_payload_file_is_opt_in(self):
+        manifest = self.manifest()
+        members = {".PKGINFO": f"pkgver = {generate_v67.PACKAGE_VERSION}\n".encode()}
+        for index, item in enumerate(manifest["source_artifacts"][2]["firmware"]):
+            blob = f"GSP fixture {index}".encode()
+            members[item["path"]] = blob
+            item["size"] = len(blob)
+            item["sha256"] = hashlib.sha256(blob).hexdigest()
+        notice = manifest["source_artifacts"][2]["notice"]
+        members[notice["path"]] = b"license fixture"
+        notice["sha256"] = hashlib.sha256(members[notice["path"]]).hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "package.tar"
+            package.write_bytes(b"package fixture")
+            manifest_path = root / "manifest.json"
+            manifest_path.write_text(json.dumps(manifest))
+            for mode in ("default", "payload", "header"):
+                with self.subTest(mode=mode):
+                    output = root / mode
+                    header = root / "payload_words.h"
+                    argv = ["generate_v67.py", str(package), str(output)]
+                    if mode == "payload":
+                        argv += ["--payload"]
+                    if mode == "header":
+                        argv += ["--header", str(header)]
+                    with mock.patch.object(generate_v67, "MANIFEST", manifest_path), \
+                         mock.patch.object(generate_v67, "PACKAGE_SHA256", hashlib.sha256(package.read_bytes()).hexdigest()), \
+                         mock.patch.object(generate_v67, "extract_member", side_effect=lambda _, name: members[name]), \
+                         mock.patch.object(sys, "argv", argv):
+                        self.assertEqual(generate_v67.main(), 0)
+                    payload = output / "cmp-signature.bin"
+                    self.assertEqual(payload.exists(), mode == "payload")
+                    if payload.exists():
+                        self.assertEqual(payload.read_bytes(), generate_v67.build_payload())
+                    if mode == "header":
+                        self.assertEqual(header.read_text(), generate_v67.payload_header())
+
+    def test_firmware_install_inventory(self):
+        assets = Path(os.environ.get("GPU_UNLOCK_ASSETS", ""))
+        manifest = self.manifest()
+        names = set(manifest["derived_assets"]) | {"gsp_ga10x.bin", "gsp_tu10x.bin"}
+        if not all((assets / name).is_file() for name in names):
+            self.skipTest("Stage 1 pinned assets are not available")
+        for item in manifest["source_artifacts"][2]["firmware"]:
+            data = (assets / Path(item["path"]).name).read_bytes()
+            self.assertEqual(len(data), item["size"])
+            self.assertEqual(hashlib.sha256(data).hexdigest(), item["sha256"])
+        for name, digest in manifest["derived_assets"].items():
+            self.assertEqual(hashlib.sha256((assets / name).read_bytes()).hexdigest(), digest)
+        with tempfile.TemporaryDirectory() as directory:
+            subprocess.run(["make", "-s", f"DESTDIR={directory}", f"ASSETS={assets}",
+                            "install-firmware"], cwd=ROOT, check=True)
+            installed = Path(directory) / "usr/lib/firmware/gpu-unlock/610.43.03"
+            self.assertEqual({p.name for p in installed.iterdir()}, names)
+            for name in names:
+                self.assertEqual((installed / name).read_bytes(), (assets / name).read_bytes())
 
     def test_install_uses_standard_paths(self):
         version = (ROOT / "VERSION").read_text().strip()

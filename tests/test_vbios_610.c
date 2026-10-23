@@ -19,6 +19,17 @@ int main(int argc, char **argv)
 	u8 rom[4096], image[1280] = {0};
 	struct gpu_unlock_fwsec fw;
 	u32 offset;
+	vbios_fixture_v2(rom);
+	assert(!gpu_unlock_vbios_fwsec(rom, sizeof(rom), &fw));
+	assert(fw.version == 2 && fw.image_off == 316 && fw.data_off == 256);
+	assert(fw.imem_ns_size == 0 && fw.imem_sec_size == 256);
+	assert(!gpu_unlock_fwsec_patch_frts(rom + fw.image_off, &fw, 0x100000));
+	for (int field = 0; field < 6; field++) {
+		const u32 offsets[] = { 264, 268, 276, 292, 296, 304 };
+		vbios_fixture_v2(rom);
+		w32(rom + offsets[field], 0xffffffff);
+		assert(gpu_unlock_vbios_fwsec(rom, sizeof(rom), &fw));
+	}
 
 	for (int stride = 6; stride <= 8; stride += 2) {
 		vbios_fixture(rom, stride);
