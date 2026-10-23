@@ -4,7 +4,7 @@ This Linux kernel module combines the CMP unlocker's V67/PLM technique with the 
 
 The benefit of this early kmod driver is that it does not require manual patching each time nvidia releases a new driver version.
 
-The effect of this unlock is that it doubles the instruction issuing speed of FP/BF16 FMA into FP32 operations on GA102 and GA104 cards.
+The effect of this unlock is that it doubles the instruction issuing speed of FP/BF16 FMA into FP32 operations on GA102, GA104 and GA106 cards.
 
 [3090 Ti dense 8192³ GEMM at 450 W, five-sample medians with FP32 accumulation](https://github.com/Zagitta/gpu-unlock/issues/1#issue-5905622687):
 
@@ -100,14 +100,14 @@ There is no `softdep nvidia pre:` rule: kmod honours only the first
 The module does nothing unless the kernel command line opts in:
 
 ```
-gpu_unlock.targets=all                          # every unbound GA102/GA104 card
+gpu_unlock.targets=all                          # every unbound GA102/GA104/GA106 card
 gpu_unlock.targets=0000:21:00.0                 # only these cards
 gpu_unlock.targets=0000:21:00.0,0000:22:00.0    # comma-separated
 ```
 
 Addresses are full PCI names as `lspci -D` prints them (hex digits in either
 case), independent of GPU numbering and display role. An entry that is not
-a GA102/GA104 card, including `all` mixed with addresses, is logged and ignored.
+a GA102/GA104/GA106 card, including `all` mixed with addresses, is logged and ignored.
 The cards are unlocked concurrently, about a second in all however many
 there are, and each on its own: a card that is already bound or powered
 down is skipped. Bus mastering that the board firmware left on (Supermicro
