@@ -1,4 +1,25 @@
-# GPU unlock 1.0.0
+# GPU unlock — experimental Unraid integration
+
+This fork adds [Unraid build and early-boot installation scripts](unraid/README.md)
+to [Zagitta/gpu-unlock](https://github.com/Zagitta/gpu-unlock). Credit for the GPU
+unlock and firmware work belongs to the upstream project; this fork adds host
+integration and does not introduce a different unlock algorithm.
+
+**Start here: [Unraid instructions, recovery, and known limitations](unraid/README.md).**
+
+The integration approach was exercised on Unraid 7.3.4 / `6.18.58-Unraid`, GCC
+16.2.0, RTX 3090 + RTX 5060 Ti, NVIDIA open driver 580.196.07. The kernel logged
+`gpu_unlock: unlocked` for the 3090 before NVIDIA initialized. **The tester did
+not observe a major change in Strata IQ3 decode or prefill performance.** There
+is no controlled before/after benchmark or claimed LLM speedup. The generalized
+scripts in this fork still need independent testing; the original successful
+deployment used equivalent scripts assembled interactively. The 5060 Ti was
+present but was not targeted or unlocked.
+
+The upstream description and installation instructions follow. For Unraid,
+use the linked instructions rather than `make install` below.
+
+## Upstream GPU unlock 1.0.0
 
 Unlock FP/BF16 instruction issue rate on Nvidia 3000's cards to their professional equivalents
 

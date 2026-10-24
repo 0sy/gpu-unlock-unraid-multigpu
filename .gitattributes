@@ -11,3 +11,6 @@
 *.bin export-ignore
 *.cu export-ignore
 /debian -export-ignore
+/unraid -export-ignore
+/unraid/** -export-ignore
+/unraid/*.sh text eol=lf
