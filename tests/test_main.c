@@ -11,11 +11,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
-#include "../kernel/gpu_unlock/recipes.h"
-static const struct gu_card *counted_card_find(u16 device);
-#define gu_card_find counted_card_find
 #include "../kernel/gpu_unlock/main.c"
-#undef gu_card_find
 
 #define MAX_DEVICES 8
 #define RTX_3090 0x2204
@@ -31,12 +27,7 @@ static pthread_cond_t fake_cond = PTHREAD_COND_INITIALIZER;
 static struct pci_driver nvidia_driver = { "nvidia" }, vfio_driver = { "vfio-pci" };
 static struct {
 	int loads, releases, fail_load;
-	bool loaded, dispatching;
-	int fail_family, family_loads[2];
-	int lookups, selections;
-	const struct gu_device *contexts[MAX_DEVICES];
-	const struct gu_card *recipes[MAX_DEVICES];
-	const struct gpu_unlock_610_fw_desc *firmware[MAX_DEVICES];
+	bool loaded;
 	struct pci_dev *load_dev;
 	int started, finished, in_flight, max_in_flight;
 	int expected_concurrent; /* unlocks that must overlap */
@@ -46,42 +37,6 @@ static struct {
 	int registrations;
 	char log[16384];
 } fake;
-
-static const struct gu_card *counted_card_find(u16 device)
-{
-	fake.lookups++;
-	return gu_card_find(device);
-}
-
-const struct gpu_unlock_610_fw_desc *
-gpu_unlock_610_select_firmware(const struct gu_card *recipe)
-{
-	static const struct gpu_unlock_610_fw_desc direct = { .direct = true };
-	static const struct gpu_unlock_610_fw_desc hs = { .direct = false };
-
-	assert(recipe);
-	fake.selections++;
-	return recipe->direct_boot ? &direct : &hs;
-}
-
-/* Preparation, boot and every resume must receive the original context. */
-static void check_context(const struct gu_device *device)
-{
-	unsigned int index = device->pdev - devices;
-
-	assert(index < device_count && device->recipe && device->firmware);
-	assert(device->recipe->device == device->pdev->device);
-	assert(device->firmware->direct == device->recipe->direct_boot);
-	if (fake.contexts[index]) {
-		assert(fake.contexts[index] == device);
-		assert(fake.recipes[index] == device->recipe);
-		assert(fake.firmware[index] == device->firmware);
-	} else {
-		fake.contexts[index] = device;
-		fake.recipes[index] = device->recipe;
-		fake.firmware[index] = device->firmware;
-	}
-}
 
 void test_log(const struct pci_dev *pdev, const char *format, ...)
 {
@@ -153,7 +108,6 @@ static void *async_thread(void *arg)
 
 async_cookie_t async_schedule_domain(async_func_t fn, void *data, struct async_domain *domain)
 {
-	fake.dispatching = true;
 	struct async_entry *entry = malloc(sizeof(*entry));
 	async_cookie_t cookie;
 
@@ -176,27 +130,17 @@ void async_synchronize_full_domain(struct async_domain *domain)
 	pthread_mutex_unlock(&domain->lock);
 }
 
-int gpu_unlock_610_load_shared(const struct gu_device *device, struct gpu_unlock_610_shared *shared)
+int gpu_unlock_610_load_shared(struct pci_dev *pdev, struct gpu_unlock_610_shared *shared)
 {
-	struct pci_dev *pdev = device->pdev;
-	bool direct = device->firmware->direct;
-	check_context(device);
-	struct gpu_unlock_610_firmware *assets = direct ? &shared->ga100 : &shared->ga10x;
-
-	/* Even a cache hit must finish before the first worker is dispatched. */
-	assert(!fake.dispatching && !fake.in_flight);
-	if (assets->prepared)
-		return assets->error;
+	pthread_mutex_lock(&fake_lock);
+	/* Loaded once per round, before any unlock can use it. */
+	assert(!fake.in_flight && !shared->gsp);
 	fake.loads++;
-	fake.family_loads[direct]++;
 	fake.load_dev = pdev;
-	assets->prepared = true;
-	assets->error = fake.fail_load ? fake.fail_load :
-		(fake.fail_family == (direct ? 2 : 1) ? -ENOENT : 0);
-	if (assets->error)
-		return assets->error;
-	assets->gsp = fake_gsp;
-	shared->booter = fake_gsp;
+	pthread_mutex_unlock(&fake_lock);
+	if (fake.fail_load)
+		return fake.fail_load;
+	shared->gsp = fake_gsp;
 	fake.loaded = true;
 	return 0;
 }
@@ -206,27 +150,21 @@ void gpu_unlock_610_release_shared(struct gpu_unlock_610_shared *shared)
 	pthread_mutex_lock(&fake_lock);
 	/* Only after every unlock has returned. */
 	assert(!fake.in_flight && fake.finished == fake.started);
-	assert(shared->booter == (fake.loaded ? fake_gsp : NULL));
+	assert(shared->gsp == (fake.loaded ? fake_gsp : NULL));
 	fake.releases++;
 	fake.loaded = false;
-	fake.dispatching = false;
-	memset(shared, 0, sizeof(*shared));
+	shared->gsp = NULL;
 	pthread_mutex_unlock(&fake_lock);
 }
 
-int gpu_unlock_610_unlock(const struct gu_device *device, const struct gpu_unlock_610_shared *shared,
+int gpu_unlock_610_unlock(struct pci_dev *pdev, const struct gpu_unlock_610_shared *shared,
 			  bool resume)
 {
-	struct pci_dev *pdev = device->pdev;
 	unsigned int index = pdev - devices;
 	struct timespec deadline;
 	int ret;
 
-	check_context(device);
-	const struct gpu_unlock_610_firmware *assets = device->firmware->direct ?
-		&shared->ga100 : &shared->ga10x;
-	assert(assets->prepared && !assets->error && assets->gsp == fake_gsp);
-	assert(shared->booter == fake_gsp);
+	assert(shared->gsp == fake_gsp);
 	assert(pdev->locked && pthread_equal(pdev->owner, pthread_self()));
 	/* Unbound at boot; after resume only a card nvidia suspended. */
 	assert(resume ? pdev->driver == &nvidia_driver : !pdev->driver);
@@ -295,11 +233,6 @@ static void reset(char *list)
 static void boot(void)
 {
 	assert(!test_module_init());
-	assert(fake.lookups == (targets && *targets ? (int)device_count : 0));
-	int selected = 0;
-	for (unsigned int i = 0; i < device_count; i++)
-		selected += !!fake.contexts[i];
-	assert(fake.selections == selected);
 	assert(!fake.in_flight && fake.finished == fake.started);
 	for (unsigned int i = 0; i < device_count; i++)
 		assert(!devices[i].locked && fake.unlocks[i] <= 1);
@@ -308,9 +241,7 @@ static void boot(void)
 /* Calls the notifier as the PM core does; returns once it has. */
 static void notify(unsigned long event)
 {
-	int lookups = fake.lookups, selections = fake.selections;
 	assert(fake.nb && fake.nb->notifier_call(fake.nb, event, NULL) == NOTIFY_DONE);
-	assert(fake.lookups == lookups && fake.selections == selections);
 	/* nvidia's notifier runs next: no unlock may still be running. */
 	assert(!fake.in_flight && fake.finished == fake.started);
 }
@@ -329,7 +260,7 @@ static void run(void)
 {
 	boot();
 	shutdown();
-	assert(fake.loads <= (int)device_count && fake.releases <= 1);
+	assert(fake.loads <= 1 && fake.releases <= 1);
 }
 
 static bool logged(const char *text)
@@ -354,37 +285,6 @@ int main(void)
 	assert(logged("0000:01:00.0: gpu_unlock: unlocked") && logged("0000:61:00.0: gpu_unlock: unlocked"));
 	assert(logged("0000:41:00.0: gpu_unlock: unlock failed (-16)"));
 	puts("all: three cards unlocked concurrently, bound card skipped PASS");
-
-	/* Both firmware families are complete before workers start, at boot and resume. */
-	reset("all");
-	add("0000:01:00.0", RTX_3090, false);
-	add("0000:21:00.0", 0x20c2, false);
-	add("0000:31:00.0", 0x2082, false);
-	fake.expected_concurrent = 3;
-	boot();
-	assert(fake.family_loads[0] == 1 && fake.family_loads[1] == 1);
-	for (unsigned int i = 0; i < device_count; i++)
-		devices[i].driver = &nvidia_driver;
-	notify(PM_POST_SUSPEND);
-	assert(fake.family_loads[0] == 2 && fake.family_loads[1] == 2);
-	assert(fake.max_in_flight == 3 && fake.started == 6);
-	shutdown();
-	puts("mixed families: prepare both before dispatch at boot and resume PASS");
-
-	/* A failed family never prevents the other prepared family from running. */
-	for (int failed = 1; failed <= 2; failed++) {
-		reset("all");
-		add("0000:01:00.0", RTX_3090, false);
-		add("0000:21:00.0", 0x20c2, false);
-		add("0000:31:00.0", 0x2082, false);
-		fake.fail_family = failed;
-		fake.expected_concurrent = failed == 1 ? 2 : 1;
-		run();
-		assert(fake.loads == 2 && fake.family_loads[0] == 1 && fake.family_loads[1] == 1);
-		assert(fake.unlocks[0] == (failed == 2));
-		assert(fake.unlocks[1] == (failed == 1) && fake.unlocks[2] == (failed == 1));
-	}
-	puts("mixed families: preparation failure isolated in either order PASS");
 
 	/* A list picks cards in any case; the rest are not touched. */
 	reset("0000:61:00.0,0000:0A:00.0");

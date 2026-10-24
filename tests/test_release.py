@@ -2,9 +2,6 @@
 """Host checks for the retained module components."""
 from pathlib import Path
 import os
-import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "firmware"))
-import generate_v67
 import subprocess
 import tempfile
 import unittest
@@ -16,19 +13,15 @@ KERNEL = ROOT / "kernel/gpu_unlock"
 # against mocked hardware.
 ASSETS = next((path for path in (Path(os.environ.get("GPU_UNLOCK_ASSETS", "")),
                                  Path("/usr/lib/firmware/gpu-unlock/610.43.03"))
-               if all((path / name).is_file() for name in (
-                   "gsp_ga10x.bin", "gsp_tu10x.bin", "booter_load_ga100.bin",
-                   "falcon_loader.bin", "gsp_boot_ga100.bin", "gsp_boot_desc_ga100.bin",
-                   "gsp_boot_ga102.bin", "gsp_boot_desc_ga102.bin"))), None)
+               if (path / "gsp_ga10x.bin").is_file()), None)
 
 CASES = {
     "gfw_eval": ["gfw_eval.c"],
     "layout_610": ["layout_610.c"],
     "prep_610": ["layout_610.c", "prep_610.c"],
     "vbios_610": ["vbios_610.c"],
-    "unlock_adapter": ["gfw_eval.c", "prep_610.c", "layout_610.c", "vbios_610.c", "recipes.c", "payload_610.c", "falcon.c"],
-    "main": ["recipes.c"],
-    "payload_610": ["recipes.c", "payload_610.c"],
+    "unlock_adapter": ["gfw_eval.c", "prep_610.c", "layout_610.c", "vbios_610.c"],
+    "main": [],
 }
 # Tests that include a kernel source directly build it against a shim.
 SHIMS = {
@@ -50,15 +43,11 @@ class ComponentTests(unittest.TestCase):
                                "-I", str(KERNEL), *shim,
                                *(str(KERNEL / source) for source in sources),
                                str(ROOT / "tests" / f"test_{name}.c"),
-                               "-o", str(output), *(["-lcrypto"] if name == "unlock_adapter" else [])]
+                               "-o", str(output)]
                     subprocess.run(command, check=True)
                     args = [str(output)]
                     if name == "unlock_adapter" and ASSETS:
                         args += ["-", str(ASSETS)]
-                    if name == "payload_610":
-                        for address, value in ((0x1fa7cc, 0xfffff0ff), (0x823804, 0xffffffff), (0x9a0148, 0xffffffff)):
-                            data = subprocess.check_output([str(output), hex(address), hex(value)])
-                            self.assertEqual(data, generate_v67.build_payload(address, value))
                     result = subprocess.run(args, capture_output=True, text=True)
                     self.assertEqual(result.returncode, 0,
                                      (result.stdout + result.stderr)[-4000:])

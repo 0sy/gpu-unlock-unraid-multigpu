@@ -17,12 +17,13 @@ typedef uint64_t u64;
 
 #include "layout_610.h"
 
-#define GU_BOOTER_IMAGE_SIZE 60160u
-#define GU_BOOTER_SIG_TOTAL 384u
-#define GU_PAYLOAD_SIZE 0xf800u
+#define GU_BOOTER_IMAGE_SIZE 60416u
+#define GU_BOOTER_SIG_TOTAL 768u
+#define GU_V67_SIZE 0xfa00u
 #define GU_WPR_META_SIZE 256u
 #define GU_WPR_META_MAGIC 0xdc3aae21371a60b3ull
 #define GU_RADIX_PAGE 4096u
+#define GU_FUSE_SEC2_UCODE1 0x00824140u
 
 struct gpu_unlock_booter_hdr {
 	u32 os_code_off;

@@ -11,5 +11,3 @@
 *.bin export-ignore
 *.cu export-ignore
 /debian -export-ignore
-/docs -export-ignore
-/docs/* export-ignore

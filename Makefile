@@ -14,9 +14,8 @@ PKG        ?= gpu-unlock
 
 MODULE_FILES   := $(filter-out %.mod.c,$(sort $(wildcard kernel/gpu_unlock/*.[ch]))) \
                   kernel/gpu_unlock/Kbuild kernel/gpu_unlock/Makefile kernel/gpu_unlock/dkms.conf
-FIRMWARE_FILES := booter_load_ga100.bin falcon_loader.bin gsp_ga10x.bin gsp_tu10x.bin \
-                  gsp_boot_ga102.bin gsp_boot_desc_ga102.bin \
-                  gsp_boot_ga100.bin gsp_boot_desc_ga100.bin
+FIRMWARE_FILES := booter_load_ga102.bin gsp_ga10x.bin gsp_boot_ga102.bin \
+                  gsp_boot_desc_ga102.bin v67-ga102-$(NV).bin
 LICENSES       := licenses/GPL-2.0.txt licenses/CMP40HX-MIT.txt licenses/NVIDIA-MIT.txt
 NV_SOURCE      := NVIDIA-kernel-module-source-$(NV)
 NV_UTILS       := nvidia-utils-$(NV)-1-x86_64_v3.pkg.tar.zst

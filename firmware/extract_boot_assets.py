@@ -16,7 +16,14 @@ MANIFEST = Path(__file__).with_name("artifacts-610.43.03.json")
 
 
 MAGIC = 0x314C5442
-
+LABELS = (
+    "IMAGE_PROD",
+    "HEADER_PROD",
+    "SIG_PROD",
+    "PATCH_LOC",
+    "PATCH_META",
+    "NUM_SIGS",
+)
 
 
 def _array_bytes(text: str, label: str) -> tuple[bytes, bool, int]:
@@ -89,9 +96,7 @@ def build_bundle(source_text: str) -> bytes:
 
 
 PINNED = {
-    'g_bindata_ksec2GetBinArchiveBlUcode_TU102.c': 'fc0bc277eeee754ea3071ae0fe8360a52193565bba7c07dcea60b00e8d56d9c8',
-    'g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c': '49fb8759c238ba32308ed604d5932d5cb2e0f496650063fbc064bbbdd4fdfaf2',
-    'g_bindata_kgspGetBinArchiveGspRmBoot_GA100.c': '9546d42c42181ec9b7ab7f9759c22180a5c31e22c592d5925a16fa85079e2700',
+    'g_bindata_kgspGetBinArchiveBooterLoadUcode_GA102.c': '04cd3db7f670adc4efd79d2e76217bb809fffddfbd6f1af884cde2af26dd39af',
     'g_bindata_kgspGetBinArchiveGspRmBoot_GA102.c': '35e5aa9075ad3898b6022ffd5820c953d809caa7dabd530cfc1a83dc2a67c5bd',
 }
 
@@ -103,7 +108,7 @@ def extract_assets(source_root: Path, output: Path) -> None:
         if hashlib.sha256(data).hexdigest() != digest:
             raise ValueError('pinned generated source mismatch: ' + name)
         inputs[name] = data.decode('ascii')
-    booter = build_bundle(inputs['g_bindata_kgspGetBinArchiveBooterLoadUcode_GA100.c'])
+    booter = build_bundle(inputs['g_bindata_kgspGetBinArchiveBooterLoadUcode_GA102.c'])
     boot = inputs['g_bindata_kgspGetBinArchiveGspRmBoot_GA102.c']
     image = _array_bytes(boot, 'UCODE_IMAGE_PROD')[0]
     desc = _array_bytes(boot, 'UCODE_DESC_PROD')[0]
@@ -115,14 +120,7 @@ def extract_assets(source_root: Path, output: Path) -> None:
     for index in (1,3,8,10,12):
         if not fields[index+1] or fields[index]+fields[index+1] > len(image):
             raise ValueError('bootloader descriptor range outside image')
-    blobs = {'booter_load_ga100.bin': booter, 'gsp_boot_ga102.bin': image, 'gsp_boot_desc_ga102.bin': desc}
-    ga100_boot = inputs['g_bindata_kgspGetBinArchiveGspRmBoot_GA100.c']
-    blobs['gsp_boot_ga100.bin'] = _array_bytes(ga100_boot, 'UCODE_IMAGE')[0]
-    blobs['gsp_boot_desc_ga100.bin'] = _array_bytes(ga100_boot, 'UCODE_DESC')[0]
-    loader = inputs['g_bindata_ksec2GetBinArchiveBlUcode_TU102.c']
-    if not re.search(r'UCODE_DESC_data\s*=\s*\{\s*0xfd,\s*0,\s*\{\s*0x0,\s*0x200,\s*0x200,\s*0x100\s*}', loader):
-        raise ValueError('unsupported generic loader descriptor')
-    blobs['falcon_loader.bin'] = _array_bytes(loader, 'UCODE_IMAGE')[0]
+    blobs = {'booter_load_ga102.bin': booter, 'gsp_boot_ga102.bin': image, 'gsp_boot_desc_ga102.bin': desc}
     pinned = json.loads(MANIFEST.read_text())['derived_assets']
     for name, data in blobs.items():
         if hashlib.sha256(data).hexdigest() != pinned[name]:

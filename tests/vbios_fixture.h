@@ -30,24 +30,4 @@ static void vbios_fixture(u8 *rom, int stride)
 	rom[292] = 1; rom[294] = 1; rom[295] = 1; rom[296] = 1;
 }
 
-/* GA100 v2 descriptor; signed code/data contents are synthetic. */
-static void vbios_fixture_v2(u8 *rom)
-{
-	vbios_fixture(rom, 6);
-	memset(rom + 256, 0, 1536);
-	vbios_w32(rom + 256, (60u << 16) | 0x201);
-	vbios_w32(rom + 260, 1280);
-	vbios_w32(rom + 264, 1280);
-	vbios_w32(rom + 280, 256);
-	vbios_w32(rom + 288, 0);
-	vbios_w32(rom + 292, 256);
-	vbios_w32(rom + 296, 256);
-	vbios_w32(rom + 304, 1024);
-	u8 *dmem = rom + 316 + 256;
-	dmem[0] = 1; dmem[1] = 4; dmem[2] = 8; dmem[3] = 2;
-	vbios_w32(dmem + 4, 4); vbios_w32(dmem + 8, 32);
-	dmem[36] = 3; dmem[38] = 64;
-	vbios_w32(dmem + 40, 128); vbios_w32(dmem + 44, 44);
-}
-
 #endif

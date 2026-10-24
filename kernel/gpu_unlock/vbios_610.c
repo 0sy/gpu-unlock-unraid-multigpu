@@ -119,49 +119,6 @@ static int descriptor(const u8 *rom, size_t length, u64 off,
 	size = hdr >> 16;
 	GU_NOTE("FWSEC descriptor: offset=%#llx ROM_bytes=%zu header=%#x\n",
 		(unsigned long long)off, length, hdr);
-	fw.version = (hdr >> 8) & 0xff;
-	/* GA100 uses the v2 generic-loader descriptor, with embedded signatures.
-	 * Its image is kept contiguous here; the loader receives separate code
-	 * and data DMA bases within that allocation. */
-	if ((hdr & 1) && fw.version == 2) {
-		u32 sec_base, sec_size;
-		if (size < 60 || range(length, off, size))
-			return GU_DIAG(-EINVAL);
-		fw.image_off = off + size;
-		fw.image_size = r32(rom + off + 4);
-		fw.interface_off = r32(rom + off + 16);
-		fw.imem_pa = r32(rom + off + 20);
-		fw.imem_size = r32(rom + off + 24);
-		fw.imem_va = r32(rom + off + 28);
-		sec_base = r32(rom + off + 32);
-		sec_size = r32(rom + off + 36);
-		fw.data_off = r32(rom + off + 40);
-		fw.dmem_pa = r32(rom + off + 44);
-		fw.dmem_size = r32(rom + off + 48);
-		/* Restrict to the layout this contiguous adapter implements; refuse
-		 * alternate images, relocation, compression and nonzero entry. */
-		if (!fw.image_size || !fw.imem_size || !fw.dmem_size ||
-		    r32(rom + off + 8) != fw.image_size || r32(rom + off + 12) ||
-		    r32(rom + off + 52) || r32(rom + off + 56) ||
-		    fw.imem_pa || fw.dmem_pa || sec_size > fw.imem_size ||
-		    sec_base < fw.imem_va || sec_size > ~(u32)0 - 255 ||
-		    (fw.data_off & 255) || (fw.imem_size & 255) ||
-		    (fw.dmem_size & 255) || (fw.image_size & 255) ||
-		    range(length, fw.image_off, fw.image_size) ||
-		    range(fw.image_size, 0, fw.imem_size) ||
-		    fw.data_off < fw.imem_size ||
-		    range(fw.image_size, fw.data_off, fw.dmem_size) ||
-		    range(fw.dmem_size, fw.interface_off, 4))
-			return GU_DIAG(-EINVAL);
-		fw.imem_ns_size = fw.imem_size - sec_size;
-		fw.imem_sec_pa = sec_base - fw.imem_va;
-		fw.imem_sec_size = (sec_size + 255) & ~255u;
-		if ((fw.imem_ns_size & 255) || (fw.imem_sec_pa & 255) ||
-		    range(fw.imem_size, fw.imem_sec_pa, fw.imem_sec_size))
-			return GU_DIAG(-EINVAL);
-		*out = fw;
-		return 0;
-	}
 	/* vDesc: bit 0 set, version in bits 15:8, size in bits 31:16. */
 	if (!(hdr & 1) || ((hdr >> 8) & 0xff) != 3 || size < 44)
 		return GU_DIAG(-EOPNOTSUPP);

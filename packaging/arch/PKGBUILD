@@ -8,11 +8,11 @@ pkgver=1.0.0
 pkgrel=1
 _nv=610.43.03
 _utils=nvidia-utils-$_nv-1-x86_64_v3.pkg.tar.zst
-pkgdesc='Ampere pre-driver hardware unlock'
+pkgdesc='RTX 3090 BF16 unlock before the NVIDIA driver loads'
 arch=('x86_64')
 url=''
 license=('GPL-2.0-only')
-makedepends=('git' 'python' 'zstd' 'openssl')
+makedepends=('git' 'python' 'zstd')
 options=('!strip' '!debug')
 source=("$pkgbase::git+file://${startdir%/packaging/arch}"
         "https://download.nvidia.com/XFree86/NVIDIA-kernel-module-source/NVIDIA-kernel-module-source-$_nv.tar.xz"

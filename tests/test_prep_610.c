@@ -56,7 +56,7 @@ int main(void)
 	struct gpu_unlock_wpr_args args = {
 		.fb_size = in.usable_fb, .vga_offset = in.vga_base,
 		.frts_size = in.frts_size, .signature_dma = 0x1000,
-		.signature_size = GU_PAYLOAD_SIZE, .radix_dma = 0x2000,
+		.signature_size = 0xfa00, .radix_dma = 0x2000,
 		.image_size = in.image_size, .boot_dma = 0x3000,
 		.boot = { .code_offset = 256, .data_offset = 512, .image_size = 4096 },
 	};

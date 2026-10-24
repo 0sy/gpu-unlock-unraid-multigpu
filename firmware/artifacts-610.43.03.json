@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "target": "Stage 1 cmpunlocker multiwrite; hardware verification pending",
+  "target": "GA102 / 610.43.03 rejoin15 reference path",
   "source_artifacts": [
     {
       "name": "NVIDIA open kernel modules source archive",
@@ -12,22 +12,22 @@
       "filename": "NVIDIA-kernel-module-source-610.43.03.tar.xz"
     },
     {
-      "name": "cmpunlocker built-in multiwrite reference",
-      "url": "https://github.com/amoghmunikote/cmpunlocker",
-      "revision": "2d10f891a58824f0591c3332c4eccf37ff36b086",
-      "license": "GPL-2.0-only",
+      "name": "GA102 CMP90 reference and rejoin15 patch set",
+      "url": "https://github.com/WildFlash1st/cmp90hx-unlock",
+      "revision": "76940ae583281daa2b883518a2e89b56c11d3a46",
+      "license": "GPL-2.0-only (repository LICENSE; previous MIT label was incorrect)",
       "files": [
         {
-          "path": "driver/patches/sec2-postbl-plm-ss-cfg.patch",
-          "sha256": "1a9ecd419dc5e732951c8f7093be2a2314233c17e9126297459025a9ff08bc78"
+          "path": "driver/patches/cmp90-rejoin15/0014-6104303-cmp90hx-stockflow-rejoin14-multigpu-state.patch",
+          "sha256": "c51805dc332c3b6be2e6dd34964a47ce6b1ea0ce73017e0351c216d319094bb1"
         },
         {
-          "path": "common/constants.yaml",
-          "sha256": "de3900c14eab61428fb36be7776df0ea8555db72d01dfdba9a7b3d3bb2fffceb"
+          "path": "driver/patches/cmp90-rejoin15/0015-6104303-cmp90hx-stockflow-rejoin15-serialized-start.patch",
+          "sha256": "3dd3883479d10a822d54292db87a1552f15d6b144b8c42bfc88a519674836cb4"
         },
         {
-          "path": "driver/build.sh",
-          "sha256": "ac3a3f0b6f374e8593fd640fb3eb9f3b9bc25ae36f3df192d16de7f796d37c64"
+          "path": "LICENSE",
+          "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
         }
       ]
     },
@@ -42,11 +42,6 @@
           "path": "usr/lib/firmware/nvidia/610.43.03/gsp_ga10x.bin",
           "size": 84277400,
           "sha256": "572373620a37418f24dc16b5031c39338778c3257e48e8408de9a57291b24f3a"
-        },
-        {
-          "path": "usr/lib/firmware/nvidia/610.43.03/gsp_tu10x.bin",
-          "size": 29352832,
-          "sha256": "73065619db9ec921d19fc4e519dd04d91a9199b525eaca9b257b89fb8c5ec52c"
         }
       ],
       "filename": "nvidia-utils-610.43.03-1-x86_64_v3.pkg.tar.zst",
@@ -58,121 +53,109 @@
     }
   ],
   "generated_payload": {
-    "name": "cmpunlocker built-in signature template (FEAT_PLM inputs)",
-    "size": 63488,
-    "fill_dword_le": "0x000004a7",
+    "name": "rejoin15 GA102 610.43.03 V67 signature image",
+    "size": 64000,
+    "size_hex": "0x0000fa00",
+    "fill_dword_le": "0x0000019c",
+    "stack_map": {
+      "active_canary_dmem": "0x0000ff4c",
+      "initial_return_slot_dmem": "0x0000ff50"
+    },
     "overrides": [
       {
-        "offset": "0x1100",
-        "value": "0x7"
+        "offset": "0x00001100",
+        "value": "0x00000007"
       },
       {
-        "offset": "0x5b40",
-        "value": "0xc0deca7e"
+        "offset": "0x0000f948",
+        "value": "0xffffffff",
+        "role": "write value"
       },
       {
-        "offset": "0xf758",
-        "value": "0xc0deca7e"
+        "offset": "0x0000f950",
+        "value": "0x00000d44"
       },
       {
-        "offset": "0xf75c",
-        "value": "0xcbd"
+        "offset": "0x0000f960",
+        "value": "0x00823804",
+        "role": "FEAT_OVR_PLM address"
       },
       {
-        "offset": "0xf774",
-        "value": "0x1fbd"
+        "offset": "0x0000f968",
+        "value": "0x00001fce"
       },
       {
-        "offset": "0xf780",
-        "value": "0x0"
+        "offset": "0x0000f974",
+        "value": "0x00000000"
       },
       {
-        "offset": "0xf788",
-        "value": "0x10aa"
+        "offset": "0x0000f97c",
+        "value": "0x00001101"
       },
       {
-        "offset": "0xf78c",
-        "value": "0x815a"
+        "offset": "0x0000f980",
+        "value": "0x000084c8"
       },
       {
-        "offset": "0xf790",
-        "value": "0x8e18"
+        "offset": "0x0000f984",
+        "value": "0x00008e18"
       },
       {
-        "offset": "0xf794",
-        "value": "0xc0deca7e"
+        "offset": "0x0000f98c",
+        "value": "0x000084c8"
       },
       {
-        "offset": "0xf798",
-        "value": "0x815a"
+        "offset": "0x0000f990",
+        "value": "0x00000000"
       },
       {
-        "offset": "0xf79c",
-        "value": "0x0"
+        "offset": "0x0000f998",
+        "value": "0x00001fce"
       },
       {
-        "offset": "0xf7a0",
-        "value": "0xc0deca7e"
+        "offset": "0x0000f9a4",
+        "value": "0x0000ffbc"
       },
       {
-        "offset": "0xf7a4",
-        "value": "0x1fbd"
+        "offset": "0x0000f9ac",
+        "value": "0x00005789"
       },
       {
-        "offset": "0xf7b0",
-        "value": "0xffbc"
+        "offset": "0x0000f9bc",
+        "value": "0x00000d44"
       },
       {
-        "offset": "0xf7b8",
-        "value": "0x582d"
+        "offset": "0x0000f9cc",
+        "value": "0x00000003"
       },
       {
-        "offset": "0xf7c4",
-        "value": "0xc0deca7e"
+        "offset": "0x0000f9d4",
+        "value": "0x00001fce"
       },
       {
-        "offset": "0xf7c8",
-        "value": "0xcbd"
+        "offset": "0x0000f9e8",
+        "value": "0x00000d52"
       },
       {
-        "offset": "0xf7d8",
-        "value": "0x3"
-      },
-      {
-        "offset": "0xf7e0",
-        "value": "0x1fbd"
-      },
-      {
-        "offset": "0xf7f4",
-        "value": "0xccb"
-      },
-      {
-        "offset": "0xf7f8",
-        "value": "0x7f2f"
-      },
-      {
-        "offset": "0xf754",
-        "value": "0xffffffff"
-      },
-      {
-        "offset": "0xf76c",
-        "value": "0x00823804"
+        "offset": "0x0000f9ec",
+        "value": "0x000081ee",
+        "role": "terminator"
       }
     ],
-    "write_value_offset": "0xf754",
-    "write_address_offset": "0xf76c",
-    "terminator_offset": "0xf7f8",
-    "terminator": "0x7f2f",
-    "sha256": "00de1fab4e97b88216d0aac2abfbc8ff75f90fa3342ecc3216f9fed656bc1abd",
-    "generator": "firmware/generate_v67.py"
+    "write_value_offset": "0x0000f948",
+    "write_value": "0xffffffff",
+    "write_address_offset": "0x0000f960",
+    "write_address": "0x00823804",
+    "terminator_offset": "0x0000f9ec",
+    "terminator": "0x000081ee",
+    "sha256": "2a0aa1f86d0b6afff5214d641d87d46dc98ef06ed908ff05d0ddbad5ffb7e197",
+    "generator": "firmware/generate_v67.py",
+    "reference": "rejoin15 patch 0014, _kgspCmp90FillV67Signature"
   },
   "derived_assets": {
+    "booter_load_ga102.bin": "056cbc064a888f80717726c54d7f64fcd68044d123870c95a74f37f4975dcaa4",
     "gsp_boot_ga102.bin": "3df651acb174fd5f5561a1996965b192f50c5d763168446ed0d4ead19d895768",
-    "gsp_boot_desc_ga102.bin": "cc5a3fc1f4c47f2fe107b1b68f0176d8a448e6dec84b575e5560ccef5262bf15",
-    "booter_load_ga100.bin": "b6e70d37fdbd23f3dee008165d9b3510e8faeb32a60a1689fb098e18d0c721bf",
-    "gsp_boot_ga100.bin": "b80c6623f09df2f155ab335095575c637aef5e66cba6542e047422a6bab094e4",
-    "gsp_boot_desc_ga100.bin": "9e7cca2cfdc5ce601b0adba39967850046108df6c2d23fff95578ca3f0ccbe01",
-    "falcon_loader.bin": "f21f1cfbb8fffa8067685314367fc4c50f3f84dd99eda7c19db4292d9269b9d9"
+    "gsp_boot_desc_ga102.bin": "cc5a3fc1f4c47f2fe107b1b68f0176d8a448e6dec84b575e5560ccef5262bf15"
   },
-  "limitation": "Source and synthetic host verification only. GA100 direct launch and GA10x HS launch with the GA100 Booter are experimental until the hardware gates in docs/CMP-PORT-PLAN.md pass."
+  "limitation": "The manifest and generator pin/extract firmware artifacts and reproduce the reference V67 image. They do not implement an independent GSP boot/BooterLoad path or establish applicability to RTX 3090 / driver 615.71.09."
 }
