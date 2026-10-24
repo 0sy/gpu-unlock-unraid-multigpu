@@ -205,6 +205,9 @@ boot error without understanding simultaneous driver-load requests.
 
 ## Reporting results
 
+For a Docker-based PyTorch 2.9 dense GEMM comparison, see
+[the benchmark instructions](BENCHMARK.md). This is separate from LLM testing.
+
 Include Unraid/kernel/compiler versions, NVIDIA driver flavor/version, target
 GPU and PCI address, source commit from `manifest.txt`, relevant kernel logs,
 and measured before/after workload settings. Report activation separately from
